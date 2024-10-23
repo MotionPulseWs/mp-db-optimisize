@@ -6,6 +6,14 @@ Version: 1.2
 Author: Kadir Kevin
 */
 
+/*
+añadir estas lineas en el archivo wp-config.php
+
+// Limita a 3 revisiones por post
+define('WP_POST_REVISIONS', 3); 
+
+*/
+
 function optimize_database() {
     global $wpdb;
 
