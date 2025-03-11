@@ -82,7 +82,7 @@ function mpodb_admin_page() {
                 </div>
                 
                 <?php if (!empty($stats['last_run_end'])): ?>
-                <p>Última ejecución: <?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($stats['last_run_end']))); ?></p>
+                <p>Última ejecución: <?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($stats['last_run_end']))); ?> <br>(fecha y hora del servidor) </p>
                 <?php endif; ?>
             </div>
             

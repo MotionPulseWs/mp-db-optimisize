@@ -7,7 +7,7 @@
 /* Panel de bienvenida */
 .mpodb-welcome-panel {
   background: #fff;
-  border-left: 4px solid #2271b1;
+  border-left: 4px solid #2843CA;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
   margin: 20px 0;
   padding: 20px;
@@ -18,6 +18,23 @@
   margin-top: 0;
   color: #1d2327;
   font-size: 1.3em;
+}
+
+.mpodb-welcome-panel form .button {
+  background-color: #fff;
+  border-color: #242A8E;
+  color: #242A8E;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  height: auto;
+  transition: all 0.3s ease;
+}
+
+.mpodb-welcome-panel form .button:hover {
+  background-color: #f8f9fa;
+  border-color: #242A8E;
+  color: #242A8E;
 }
 
 /* Dashboard */
@@ -91,9 +108,9 @@
 }
 
 .mpodb-stat-value {
-  font-size: 16px;
-  font-weight: 500;
-  color: #2271b1;
+  font-size: 20px;
+  font-weight: 700;
+  color: #2843CA;
 }
 
 /* Botones */
@@ -108,20 +125,37 @@
   align-items: center;
   padding: 6px 14px;
   height: auto;
+  transition: all 0.3s ease;
+}
+
+/* Botón secundario (Actualizar estadísticas) */
+.mpodb-buttons .button-secondary {
+  background-color: #fff;
+  border-color: #242A8E;
+  color: #242A8E;
+}
+
+.mpodb-buttons .button-secondary:hover,
+.mpodb-buttons .button-secondary:focus {
+  background-color: #f8f9fa;
+  border-color: #242A8E;
+  color: #242A8E;
 }
 
 .mpodb-buttons .dashicons {
   margin-right: 8px;
 }
 
+/* Mantener el estilo original del botón primario */
 .mpodb-buttons .button-primary {
-  background: #2271b1;
-  border-color: #2271b1;
+  color: #fff;
+  background: #2843CA;
+  border-color: #2843CA;
 }
 
 .mpodb-buttons .button-primary:hover {
-  background: #135e96;
-  border-color: #135e96;
+  background: #242A8E;
+  border-color: #242A8E;
 }
 
 /* Animación de actualización */
