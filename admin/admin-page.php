@@ -106,6 +106,26 @@ function mpodb_admin_page() {
                 </div>
                 <?php endif; ?>
                 
+                <!-- Sección para elementos eliminados -->
+                <div class="mpodb-cleaned-items">
+                    <h3>Elementos Eliminados</h3>
+                    
+                    <div class="mpodb-stat-item">
+                        <span class="mpodb-stat-label">Custom Post Types huérfanos:</span>
+                        <span id="mpodb-orphaned-posts" class="mpodb-stat-value"><?php echo intval($stats['orphaned_posts_deleted']); ?></span>
+                    </div>
+                    
+                    <div class="mpodb-stat-item">
+                        <span class="mpodb-stat-label">Taxonomías sin uso:</span>
+                        <span id="mpodb-orphaned-taxonomies" class="mpodb-stat-value"><?php echo intval($stats['orphaned_taxonomies_deleted']); ?></span>
+                    </div>
+                    
+                    <div class="mpodb-stat-item">
+                        <span class="mpodb-stat-label">Campos ACF huérfanos:</span>
+                        <span id="mpodb-acf-orphans" class="mpodb-stat-value"><?php echo intval($stats['acf_orphans_deleted']); ?></span>
+                    </div>
+                </div>
+                
                 <div class="mpodb-buttons">
                     <button id="mpodb-refresh-stats" class="button button-secondary">
                         <span class="dashicons dashicons-update"></span> Actualizar estadísticas
@@ -130,6 +150,9 @@ function mpodb_admin_page() {
                 <li>Elimina meta datos duplicados</li>
                 <li>Elimina revisiones de posts</li>
                 <li>Elimina posts en la papelera</li>
+                <li>Elimina Custom Post Types huérfanos</li>
+                <li>Elimina taxonomías personalizadas sin uso</li>
+                <li>Elimina campos ACF huérfanos</li>
                 <li>Optimiza las tablas de la base de datos</li>
             </ul>
             <p>Para maximizar el rendimiento, recomendamos agregar estas líneas en tu archivo wp-config.php:</p>

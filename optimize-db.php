@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: MotionPulse Optimize Database
-Description: Plugin para reducir la base de datos, activar, esperar a que se ejecute y desactivar
-Version: 2.0
+Description: Busca y elimina meta datos huérfanos y duplicados en la base de datos.
+Version: 2.1
 Author: Kadir Kevin
 */
 
