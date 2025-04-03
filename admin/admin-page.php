@@ -159,6 +159,11 @@ function mpodb_admin_page() {
             <pre>// Limita a 3 revisiones por post
 define('WP_POST_REVISIONS', 3);</pre>
         </div>
+
+        <div class="mpodb-info-panel">
+            <p>Este plugin es gratis y de uso libre. Si este plugin te ha ayudado, considera in vitarle un cafe a los desarroladores.</p>
+            <a class="button button-coffee" href="https://www.paypal.com/ncp/payment/MUCAMQDHUBSXN" target="_blank">Enviar un cafe</a>
+        </div>
     </div>
     <?php
 }

@@ -211,6 +211,26 @@
   margin: 15px 0;
 }
 
+/* boton de buy a coffee */
+
+.button.button-coffee{
+  background-color: #242A8E;
+  border-color: #242A8E;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  height: auto;
+  transition: all 0.3s ease;
+}
+
+.button.button-coffee:hover{
+  background-color: #fff;
+  border-color: #242A8E;
+  color: #242A8E;
+}
+
+
 /* Responsive */
 @media screen and (max-width: 782px) {
   .mpodb-dashboard {
