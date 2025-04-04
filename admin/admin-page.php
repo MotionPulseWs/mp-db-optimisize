@@ -161,8 +161,8 @@ define('WP_POST_REVISIONS', 3);</pre>
         </div>
 
         <div class="mpodb-info-panel">
-            <p>Este plugin es gratis y de uso libre. Si este plugin te ha ayudado, considera in vitarle un cafe a los desarroladores.</p>
-            <a class="button button-coffee" href="https://www.paypal.com/ncp/payment/MUCAMQDHUBSXN" target="_blank">Enviar un cafe</a>
+            <p>Este plugin es gratis y de uso libre. Si te ha ayudado, considera invitarle un cafe a los desarrolladores.<span class="dashicons dashicons-heart"></span></p>
+            <a class="button button-coffee" href="git add ." target="_blank">Enviar un cafe</a>
         </div>
     </div>
     <?php
