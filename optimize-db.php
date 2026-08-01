@@ -2,7 +2,7 @@
 /*
 Plugin Name: MotionPulse Optimize Database
 Description: Busca y elimina meta datos huérfanos y duplicados en la base de datos.
-Version: 2.1
+Version: 3.3
 Author: Kadir Kevin
 */
 
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 // Definir constantes
 define('MPODB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MPODB_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('MPODB_VERSION', '1.3');
+define('MPODB_VERSION', '3.3');
 
 // Incluir archivos de funciones
 require_once MPODB_PLUGIN_DIR . 'includes/functions.php';

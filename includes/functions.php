@@ -25,11 +25,16 @@ function mpodb_optimize_database() {
         WHERE wp.ID IS NULL"
     );
 
-    // Identificar y eliminar meta datos duplicados
+    // Identificar y eliminar meta datos duplicados.
+    // IMPORTANTE: se particiona también por meta_value. WordPress permite
+    // legítimamente varias filas con la misma meta_key y valores distintos
+    // (add_post_meta con $unique = false), por ejemplo los idiomas de un
+    // language switcher de TranslatePress. Sólo son duplicados reales las
+    // filas idénticas en post_id + meta_key + meta_value.
     $duplicates = $wpdb->get_results("
         SELECT meta_id
         FROM (
-            SELECT meta_id, ROW_NUMBER() OVER (PARTITION BY post_id, meta_key ORDER BY meta_id DESC) AS rnum
+            SELECT meta_id, ROW_NUMBER() OVER (PARTITION BY post_id, meta_key, meta_value ORDER BY meta_id DESC) AS rnum
             FROM {$wpdb->prefix}postmeta
         ) t
         WHERE t.rnum > 1
@@ -59,18 +64,26 @@ function mpodb_optimize_database() {
         WHERE post_status = 'trash'"
     );
 
-    // Limpiar custom post types huérfanos
-    mpodb_clean_orphaned_custom_posts();
-
-    // Limpiar taxonomías sin uso
-    mpodb_clean_unused_taxonomies();
+    // NOTA: el borrado de custom post types huérfanos y de taxonomías sin uso
+    // ya NO se ejecuta automáticamente. Ambos dependen de que el post type /
+    // taxonomía esté registrado en el momento de la consulta, y esta rutina
+    // corre por WP-Cron, donde los tipos registrados sólo en el admin (o los
+    // de un plugin temporalmente desactivado) no existen. Ejecutarlo automático
+    // provocaba pérdida de datos. Ahora se revisa y ejecuta a mano desde el
+    // panel del plugin: ver mpodb_scan_orphaned_post_types() y
+    // mpodb_scan_orphaned_taxonomies().
 
     // Limpiar campos ACF huérfanos
     mpodb_clean_acf_orphans();
 
-    // Optimizar tablas
-    $wpdb->query("OPTIMIZE TABLE {$wpdb->prefix}postmeta");
-    $wpdb->query("OPTIMIZE TABLE {$wpdb->prefix}posts");
+    // Optimizar tablas. Se pasa por mpodb_is_table_safe_to_touch() para que
+    // cualquier tabla protegida (TranslatePress) quede fuera por diseño, aunque
+    // en el futuro se amplíe esta lista.
+    foreach (array($wpdb->postmeta, $wpdb->posts) as $table) {
+        if (mpodb_is_table_safe_to_touch($table)) {
+            $wpdb->query("OPTIMIZE TABLE {$table}");
+        }
+    }
 
     // Guardar tamaño final
     $final_size = mpodb_get_database_size();
@@ -89,96 +102,304 @@ function mpodb_optimize_database() {
 }
 
 /**
- * Limpiar custom post types huérfanos y sus elementos relacionados
+ * Comprobar si TranslatePress está activo en la instalación.
+ *
+ * @return bool
  */
-function mpodb_clean_orphaned_custom_posts() {
-    global $wpdb;
-    
-    // Conseguir todos los post types registrados actualmente en WordPress
-    $registered_post_types = get_post_types(array(), 'names');
-    
-    // Añadir algunos post types core que podrían no estar en la lista anterior
-    $core_types = array('post', 'page', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache');
-    $valid_post_types = array_merge($registered_post_types, $core_types);
-    
-    // Convertir a formato para consulta SQL
-    $valid_types_sql = "'" . implode("','", $valid_post_types) . "'";
-    
-    // Obtener IDs de posts con post_types que no están registrados
-    $orphaned_post_ids = $wpdb->get_col("
-        SELECT ID FROM {$wpdb->posts}
-        WHERE post_type NOT IN ({$valid_types_sql})
-    ");
-    
-    // Si hay posts huérfanos, eliminarlos
-    if (!empty($orphaned_post_ids)) {
-        $ids_string = implode(',', $orphaned_post_ids);
-        
-        // Eliminar relaciones de taxonomía
-        $wpdb->query("
-            DELETE FROM {$wpdb->term_relationships}
-            WHERE object_id IN ({$ids_string})
-        ");
-        
-        // Eliminar meta datos
-        $wpdb->query("
-            DELETE FROM {$wpdb->postmeta}
-            WHERE post_id IN ({$ids_string})
-        ");
-        
-        // Eliminar los posts huérfanos
-        $wpdb->query("
-            DELETE FROM {$wpdb->posts}
-            WHERE ID IN ({$ids_string})
-        ");
-        
-        update_option('mpodb_orphaned_posts_deleted', count($orphaned_post_ids));
-    } else {
-        update_option('mpodb_orphaned_posts_deleted', 0);
-    }
+function mpodb_is_translatepress_active() {
+    return defined('TRP_PLUGIN_VERSION') || class_exists('TRP_Translate_Press');
 }
 
 /**
- * Limpiar taxonomías sin uso
+ * Localizar las tablas propias de TranslatePress presentes en la instalación.
+ *
+ * El prefijo de WordPress cambia según el cliente/instalación (wp_, twf_...),
+ * por eso NUNCA se asume: se toma de $wpdb->prefix en tiempo de ejecución. Lo
+ * que sí es constante es el prefijo del plugin, 'trp_', de modo que las tablas
+ * siempre siguen el patrón <prefijo_wp>trp_*  (ej. twf_trp_gettext_es_es).
+ *
+ * Estas tablas contienen las traducciones reales: TranslatePress NO duplica
+ * posts por idioma, guarda todo aquí. El optimizador no debe tocarlas nunca.
+ *
+ * @return array Nombres de tabla encontrados
  */
-function mpodb_clean_unused_taxonomies() {
+function mpodb_get_translatepress_tables() {
     global $wpdb;
-    
-    // Conseguir taxonomías registradas
+
+    // esc_like escapa los '_' para que LIKE no los trate como comodín
+    $pattern = $wpdb->esc_like($wpdb->prefix . 'trp_') . '%';
+
+    $tables = $wpdb->get_col($wpdb->prepare('SHOW TABLES LIKE %s', $pattern));
+
+    return is_array($tables) ? $tables : array();
+}
+
+/**
+ * Comprobar que una tabla no pertenece a TranslatePress antes de operar
+ * sobre ella. Salvaguarda para cualquier operación a nivel de tabla que se
+ * añada al plugin en el futuro (OPTIMIZE, DROP, TRUNCATE...).
+ *
+ * @param string $table Nombre completo de la tabla
+ * @return bool True si es seguro operar sobre ella
+ */
+function mpodb_is_table_safe_to_touch($table) {
+    global $wpdb;
+
+    return strpos($table, $wpdb->prefix . 'trp_') !== 0;
+}
+
+/**
+ * Construir la cláusula SQL que excluye los posts gestionados por
+ * TranslatePress (traducciones legítimas, no huérfanos).
+ *
+ * TranslatePress no expone siempre las mismas tablas según la versión/addon
+ * instalado, pero usa consistentemente el prefijo 'trp_' tanto en los post
+ * types que registra como en las meta_key con las que vincula un post a su
+ * original. La consulta usa $wpdb->postmeta, por lo que respeta el prefijo
+ * real de la instalación (wp_, twf_, etc.) y nunca lo asume.
+ *
+ * IMPORTANTE: el fragmento devuelto NO debe pasarse por $wpdb->prepare().
+ * Ya viene listo para concatenarse a una consulta preparada; el prefijo
+ * 'trp_' es una constante del código (no entrada de usuario), así que no hay
+ * riesgo de inyección. Pasarlo por prepare() rompería el '%' del LIKE.
+ *
+ * @return string Fragmento SQL (vacío si TranslatePress no está activo)
+ */
+function mpodb_get_translatepress_exclusion_sql() {
+    global $wpdb;
+
+    if (!mpodb_is_translatepress_active()) {
+        return '';
+    }
+
+    // 'trp\_%' : se escapa el guion bajo para que LIKE lo trate como literal
+    return " AND NOT EXISTS (
+        SELECT 1 FROM {$wpdb->postmeta} pm
+        WHERE pm.post_id = p.ID AND pm.meta_key LIKE 'trp\\_%'
+    )";
+}
+
+/**
+ * Devolver la lista de post types registrados que se consideran válidos.
+ *
+ * @return array
+ */
+function mpodb_get_valid_post_types() {
+    $registered_post_types = get_post_types(array(), 'names');
+
+    // Post types de core que podrían no aparecer en la lista anterior
+    $core_types = array('post', 'page', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation', 'patterns_ai_data');
+
+    return array_unique(array_merge(array_values($registered_post_types), $core_types));
+}
+
+/**
+ * Escanear (SIN borrar nada) los post types presentes en la BD que no están
+ * registrados actualmente en WordPress.
+ *
+ * Esta función es de sólo lectura a propósito: que un post type no esté
+ * registrado NO significa que sea basura. Puede tratarse de un plugin
+ * desactivado temporalmente, de un CPT registrado sólo en el admin, o de
+ * traducciones de TranslatePress. Por eso el borrado es una acción manual
+ * y explícita del administrador.
+ *
+ * @return array Lista de arrays con 'post_type' y 'count'
+ */
+function mpodb_scan_orphaned_post_types() {
+    global $wpdb;
+
+    $valid_post_types = mpodb_get_valid_post_types();
+    $placeholders = implode(',', array_fill(0, count($valid_post_types), '%s'));
+
+    // Una sola consulta agregada: cuenta por post type ya descontando las
+    // traducciones de TranslatePress, sin recorrer post por post.
+    // Los fragmentos de exclusión se concatenan DESPUÉS de prepare() para no
+    // reinterpretar los '%' de sus cláusulas LIKE.
+    $sql = $wpdb->prepare(
+        "SELECT p.post_type, COUNT(*) AS total
+        FROM {$wpdb->posts} p
+        WHERE p.post_type NOT IN ({$placeholders})",
+        $valid_post_types
+    );
+
+    if (mpodb_is_translatepress_active()) {
+        // Excluir los post types propios de TranslatePress
+        $sql .= " AND p.post_type NOT LIKE 'trp\\_%'";
+        $sql .= mpodb_get_translatepress_exclusion_sql();
+    }
+
+    $sql .= ' GROUP BY p.post_type ORDER BY total DESC';
+
+    $rows = $wpdb->get_results($sql);
+
+    $result = array();
+    foreach ($rows as $row) {
+        $result[] = array(
+            'post_type' => $row->post_type,
+            'count'     => intval($row->total),
+        );
+    }
+
+    return $result;
+}
+
+/**
+ * Obtener los IDs borrables de un post type no registrado, excluyendo los
+ * posts gestionados por TranslatePress (traducciones legítimas).
+ *
+ * @param string $post_type
+ * @return array IDs
+ */
+function mpodb_get_deletable_ids_for_post_type($post_type) {
+    global $wpdb;
+
+    // Nunca operar sobre un post type que sí está registrado
+    if (in_array($post_type, mpodb_get_valid_post_types(), true)) {
+        return array();
+    }
+
+    // Nunca operar sobre los post types propios de TranslatePress
+    if (mpodb_is_translatepress_active() && strpos($post_type, 'trp_') === 0) {
+        return array();
+    }
+
+    // El fragmento de exclusión se concatena DESPUÉS de prepare() (ver nota en
+    // mpodb_get_translatepress_exclusion_sql)
+    $sql = $wpdb->prepare(
+        "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type = %s",
+        $post_type
+    );
+    $sql .= mpodb_get_translatepress_exclusion_sql();
+
+    $ids = $wpdb->get_col($sql);
+
+    return array_map('intval', $ids);
+}
+
+/**
+ * Eliminar manualmente los posts de un post type huérfano concreto.
+ * Sólo debe invocarse desde una acción explícita del administrador.
+ *
+ * @param string $post_type
+ * @return int Número de posts eliminados
+ */
+function mpodb_delete_orphaned_post_type($post_type) {
+    global $wpdb;
+
+    $ids = mpodb_get_deletable_ids_for_post_type($post_type);
+
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $ids_string = implode(',', array_map('intval', $ids));
+
+    // Eliminar relaciones de taxonomía
+    $wpdb->query("DELETE FROM {$wpdb->term_relationships} WHERE object_id IN ({$ids_string})");
+
+    // Eliminar meta datos
+    $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE post_id IN ({$ids_string})");
+
+    // Eliminar los posts
+    $wpdb->query("DELETE FROM {$wpdb->posts} WHERE ID IN ({$ids_string})");
+
+    $total = intval(get_option('mpodb_orphaned_posts_deleted', 0)) + count($ids);
+    update_option('mpodb_orphaned_posts_deleted', $total);
+
+    return count($ids);
+}
+
+/**
+ * Devolver la lista de taxonomías registradas que se consideran válidas.
+ *
+ * @return array
+ */
+function mpodb_get_valid_taxonomies() {
     $registered_taxonomies = get_taxonomies(array(), 'names');
-    $core_taxonomies = array('category', 'post_tag', 'nav_menu', 'link_category', 'post_format');
-    $valid_taxonomies = array_merge($registered_taxonomies, $core_taxonomies);
-    $valid_tax_sql = "'" . implode("','", $valid_taxonomies) . "'";
-    
-    // Identificar términos de taxonomías no registradas
-    $orphaned_terms = $wpdb->get_results("
-        SELECT t.term_id, tt.term_taxonomy_id
+    $core_taxonomies = array('category', 'post_tag', 'nav_menu', 'link_category', 'post_format', 'wp_theme', 'wp_template_part_area', 'wp_pattern_category');
+
+    return array_unique(array_merge(array_values($registered_taxonomies), $core_taxonomies));
+}
+
+/**
+ * Escanear (SIN borrar nada) las taxonomías presentes en la BD que no están
+ * registradas actualmente. Mismo criterio que con los post types: una
+ * taxonomía no registrada puede pertenecer a un plugin desactivado, por lo
+ * que el borrado es manual y explícito.
+ *
+ * @return array Lista de arrays con 'taxonomy' y 'count'
+ */
+function mpodb_scan_orphaned_taxonomies() {
+    global $wpdb;
+
+    $valid_taxonomies = mpodb_get_valid_taxonomies();
+    $placeholders = implode(',', array_fill(0, count($valid_taxonomies), '%s'));
+
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT tt.taxonomy, COUNT(*) AS total
+        FROM {$wpdb->term_taxonomy} tt
+        WHERE tt.taxonomy NOT IN ({$placeholders})
+        GROUP BY tt.taxonomy
+        ORDER BY total DESC",
+        $valid_taxonomies
+    ));
+
+    $result = array();
+    foreach ($rows as $row) {
+        $result[] = array(
+            'taxonomy' => $row->taxonomy,
+            'count'    => intval($row->total),
+        );
+    }
+
+    return $result;
+}
+
+/**
+ * Eliminar manualmente los términos de una taxonomía huérfana concreta.
+ * Sólo debe invocarse desde una acción explícita del administrador.
+ *
+ * @param string $taxonomy
+ * @return int Número de términos eliminados
+ */
+function mpodb_delete_orphaned_taxonomy($taxonomy) {
+    global $wpdb;
+
+    // Nunca operar sobre una taxonomía que sí está registrada
+    if (in_array($taxonomy, mpodb_get_valid_taxonomies(), true)) {
+        return 0;
+    }
+
+    $orphaned_terms = $wpdb->get_results($wpdb->prepare(
+        "SELECT t.term_id, tt.term_taxonomy_id
         FROM {$wpdb->terms} t
         JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-        WHERE tt.taxonomy NOT IN ({$valid_tax_sql})
-    ");
-    
+        WHERE tt.taxonomy = %s",
+        $taxonomy
+    ));
+
     $count_deleted = 0;
-    
-    if (!empty($orphaned_terms)) {
-        foreach ($orphaned_terms as $term) {
-            // Eliminar relaciones
-            $wpdb->delete($wpdb->term_relationships, array('term_taxonomy_id' => $term->term_taxonomy_id));
-            
-            // Eliminar taxonomía
-            $wpdb->delete($wpdb->term_taxonomy, array('term_taxonomy_id' => $term->term_taxonomy_id));
-            
-            // Eliminar término
-            $wpdb->delete($wpdb->terms, array('term_id' => $term->term_id));
-            
-            $count_deleted++;
-        }
-        
-        // Limpiar caché
-        wp_cache_flush();
+
+    foreach ($orphaned_terms as $term) {
+        // Eliminar relaciones
+        $wpdb->delete($wpdb->term_relationships, array('term_taxonomy_id' => $term->term_taxonomy_id));
+
+        // Eliminar taxonomía
+        $wpdb->delete($wpdb->term_taxonomy, array('term_taxonomy_id' => $term->term_taxonomy_id));
+
+        // Eliminar término
+        $wpdb->delete($wpdb->terms, array('term_id' => $term->term_id));
+
+        $count_deleted++;
     }
-    
-    update_option('mpodb_orphaned_taxonomies_deleted', $count_deleted);
+
+    if ($count_deleted > 0) {
+        wp_cache_flush();
+        $total = intval(get_option('mpodb_orphaned_taxonomies_deleted', 0)) + $count_deleted;
+        update_option('mpodb_orphaned_taxonomies_deleted', $total);
+    }
+
+    return $count_deleted;
 }
 
 /**

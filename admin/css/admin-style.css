@@ -211,6 +211,42 @@
   margin: 15px 0;
 }
 
+/* Panel de compatibilidad con TranslatePress */
+
+.mpodb-trp-compat h3 .dashicons {
+  vertical-align: text-bottom;
+  color: #2271b1;
+}
+
+.mpodb-trp-tables summary {
+  cursor: pointer;
+  color: #2271b1;
+  padding: 6px 0;
+}
+
+.mpodb-trp-tables summary:hover {
+  color: #135e96;
+}
+
+.mpodb-trp-tables ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 8px 0 0;
+  columns: 2;
+}
+
+.mpodb-trp-tables ul li {
+  margin-bottom: 4px;
+  break-inside: avoid;
+  color: #50575e;
+}
+
+@media screen and (max-width: 782px) {
+  .mpodb-trp-tables ul {
+    columns: 1;
+  }
+}
+
 /* boton de buy a coffee */
 
 .button.button-coffee{
