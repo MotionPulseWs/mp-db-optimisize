@@ -1,0 +1,12 @@
+# Normalizar finales de línea en el repositorio
+* text=auto
+
+# Los scripts de shell deben quedarse en LF: con CRLF el shebang se lee como
+# "/usr/bin/env bash\r" y fallan al ejecutarse en Linux y macOS.
+*.sh text eol=lf
+
+# Archivos binarios: nunca convertir
+*.zip binary
+*.png binary
+*.jpg binary
+*.gif binary

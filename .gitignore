@@ -1,0 +1,17 @@
+# Paquetes de distribución del plugin
+*.zip
+
+# Carpeta temporal de empaquetado
+/build/
+/dist/
+
+# Sistema operativo
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editores
+*.code-workspace
+*.swp
+*~
