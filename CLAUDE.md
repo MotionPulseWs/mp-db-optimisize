@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A self-contained WordPress plugin ("MotionPulse Optimize Database", slug `mpodb`) that cleans and shrinks the WP database. Plain PHP + jQuery — there is no build step, package manager, dependency, test suite, or linter in this repo. The repository root *is* the plugin directory: deploying means copying it into `wp-content/plugins/`. There are no commands to build, lint, or test; the only way to exercise the code is inside a running WordPress install (activate the plugin, then use the **MotionPulse DB** admin menu).
+A self-contained WordPress plugin ("MotionPulse Optimize Database", slug `mpodb`) that cleans and shrinks the WP database. Plain PHP + jQuery — there is no build step, package manager, dependency, test suite, or linter in this repo. The repository root *is* the plugin directory: deploying means copying it into `wp-content/plugins/`. There is no lint or test command; the only way to exercise the code is inside a running WordPress install (activate the plugin, then use the **MotionPulse DB** admin menu).
+
+The one real command in this repo is packaging a release zip:
+
+```bash
+bash build-zip.sh
+```
+
+It reads the version from the `Version:` header in [optimize-db.php](optimize-db.php), stages the tree into `build/mp-db-optimisize/` excluding dev-only files (`.git`, `.vscode`, `CLAUDE.md`, `build-zip.sh` itself), and produces `mp-db-optimisize-<version>.zip` in the repo root. The staged folder name (`mp-db-optimisize`) must not change — WordPress uses it as the plugin slug, and a different folder name would install as a duplicate plugin on sites that already have it.
 
 The whole UI and all code comments are in Spanish. Keep new user-facing strings and comments in Spanish to match.
 
@@ -30,7 +38,7 @@ Orphaned custom post types and taxonomies are **scan-only** in the automatic pas
 
 ### Invariants that previous bugs turned into rules
 
-- **Duplicate postmeta is partitioned by `post_id + meta_key + meta_value`, not by `post_id + meta_key`.** WordPress legitimately stores multiple rows sharing a `meta_key` (`add_post_meta` with `$unique = false`). Narrowing the partition destroys multivalued metadata (e.g. TranslatePress language switcher entries).
+- **Duplicate postmeta is partitioned by `post_id + meta_key + meta_value`, not by `post_id + meta_key`.** WordPress legitimately stores multiple rows sharing a `meta_key` (`add_post_meta` with `$unique = false`). Narrowing the partition destroys multivalued metadata (e.g. TranslatePress language switcher entries). This detection uses `ROW_NUMBER() OVER (PARTITION BY ...)`, which requires MySQL 8.0+/MariaDB 10.2+ — don't replace it with a self-join or subquery approach that silently works on older servers without checking `README.md`'s stated requirement.
 - **Never assume the `wp_` table prefix.** Always derive from `$wpdb->prefix` / `$wpdb->posts` / `$wpdb->postmeta`; installs in the wild use prefixes like `twf_`.
 - **TranslatePress data is off-limits.** Its tables always match `<wp_prefix>trp_*` and hold the translations themselves (it does not duplicate posts per language). Any new table-level operation must be gated on `mpodb_is_table_safe_to_touch()`; any new post-level query must append `mpodb_get_translatepress_exclusion_sql()`.
 - **`mpodb_get_translatepress_exclusion_sql()` must be concatenated *after* `$wpdb->prepare()`, never passed through it** — `prepare()` would mangle the `%` in its `LIKE`. The fragment contains only code constants, so there is no injection surface. Same pattern in `mpodb_scan_orphaned_post_types()` and `mpodb_get_deletable_ids_for_post_type()`.

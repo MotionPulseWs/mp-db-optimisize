@@ -105,6 +105,30 @@ bash build-zip.sh
 
 Genera `mp-db-optimisize-<versión>.zip` en la raíz, con la carpeta `mp-db-optimisize/` dentro y sin archivos de desarrollo. Los `.zip` están ignorados por Git.
 
+### Qué archivos van dentro del ZIP
+
+Si necesitas montar el ZIP a mano (sin `bash`, por ejemplo en Windows sin Git Bash), la carpeta que subas a WordPress debe llamarse `mp-db-optimisize` y contener **sólo** esto:
+
+```
+mp-db-optimisize/
+├── optimize-db.php
+├── index.php
+├── includes/
+│   └── functions.php
+├── admin/
+│   ├── admin-page.php
+│   ├── css/
+│   │   └── admin-style.css
+│   └── js/
+│       └── admin-script.js
+```
+
+**No incluyas** `.git/`, `.gitignore`, `.gitattributes`, `.vscode/`, `CLAUDE.md`, `build-zip.sh`, ni la carpeta `build/`: son archivos de desarrollo, no forman parte del plugin y si acaban dentro del ZIP no rompen nada, pero no deben subirse a un sitio de producción. `README.md` tampoco es necesario en el sitio, aunque no causa problemas si se incluye.
+
+El nombre de la carpeta raíz dentro del ZIP importa: WordPress la usa como slug del plugin. Si subes el ZIP con un nombre de carpeta distinto a `mp-db-optimisize`, un sitio que ya tenga el plugin instalado quedará con dos copias en vez de actualizar la existente.
+
+La forma más fiable de no equivocarte es seguir usando `bash build-zip.sh` — hace exactamente esta selección de archivos de forma automática.
+
 Convenciones del código: funciones, opciones y nonces con prefijo `mpodb_`; clases CSS e IDs con prefijo `mpodb-`; código procedural sin clases; comentarios e interfaz en español.
 
 Si vas a añadir cualquier operación nueva sobre tablas o posts, respeta las salvaguardas existentes: usa `mpodb_is_table_safe_to_touch()` para operaciones a nivel de tabla y `mpodb_get_translatepress_exclusion_sql()` para consultas sobre posts. Nunca asumas el prefijo `wp_`: usa siempre `$wpdb->prefix`.
